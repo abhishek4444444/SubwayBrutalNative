@@ -1,0 +1,67 @@
+cmake_minimum_required(VERSION 3.22.1)
+project(subwaybrutal)
+
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
+include(FetchContent)
+
+FetchContent_Declare(
+    Dobby
+    GIT_REPOSITORY https://github.com/jmpews/Dobby.git
+    GIT_TAG master
+)
+
+set(DOBBY_BUILD_SHARED OFF CACHE BOOL "" FORCE)
+set(Plugin.Android.BionicLinkerRestriction OFF CACHE BOOL "" FORCE)
+
+FetchContent_MakeAvailable(Dobby)
+
+add_library(
+    subwaybrutal
+    SHARED
+    memory.cpp
+    hooks.cpp
+    socket_server.cpp
+    bridge.cpp
+    main.cpp
+)
+
+target_link_libraries(
+    subwaybrutal
+    dobby_static
+    android
+    log
+    EGL
+    GLESv2
+)
+
+target_include_directories(
+    subwaybrutal PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}
+    ${dobby_SOURCE_DIR}/include
+)
+
+target_compile_options(
+    subwaybrutal PRIVATE
+    -O2
+    -fvisibility=hidden
+    -fno-exceptions
+    -fno-rtti
+    -Wall
+)
+
+add_executable(
+    ffinjector
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../../../injector/injector.cpp
+)
+
+target_link_libraries(
+    ffinjector
+    log
+)
+
+target_compile_options(
+    ffinjector PRIVATE
+    -O2
+)

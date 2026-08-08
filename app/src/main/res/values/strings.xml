@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Subway Brutal</string>
+    <string name="root_not_found">ROOT NOT FOUND — App needs root!</string>
+</resources>
