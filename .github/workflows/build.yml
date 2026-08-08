@@ -36,59 +36,61 @@ jobs:
           echo "ANDROID_NDK_ROOT=$SDK/ndk/25.2.9519653" >> $GITHUB_ENV
           echo "NDK_HOME=$SDK/ndk/25.2.9519653" >> $GITHUB_ENV
           echo "$SDK/cmake/3.22.1/bin" >> $GITHUB_PATH
-          echo "=== Verify NDK ==="
-          ls -la $SDK/ndk/25.2.9519653/ | head -5
-          echo "=== Verify CMake ==="
-          ls -la $SDK/cmake/3.22.1/bin/
 
       - name: Download Gradle 7.6.1
         run: |
           wget -q https://services.gradle.org/distributions/gradle-7.6.1-bin.zip -O /tmp/gradle.zip
           unzip -q /tmp/gradle.zip -d /opt/
           echo "/opt/gradle-7.6.1/bin" >> $GITHUB_PATH
-          /opt/gradle-7.6.1/bin/gradle --version
 
       - name: Create local.properties
         run: |
           echo "sdk.dir=$ANDROID_SDK_ROOT" > local.properties
           echo "ndk.dir=$ANDROID_NDK_HOME" >> local.properties
-          cat local.properties
 
       - name: Generate Gradle Wrapper
         run: |
           /opt/gradle-7.6.1/bin/gradle wrapper --gradle-version 7.6.1 --distribution-type bin
           chmod +x gradlew
-          ls -la gradle/wrapper/
 
       - name: Build Debug APK
         run: |
-          ./gradlew assembleDebug --no-daemon --stacktrace 2>&1 | tee build.log
+          ./gradlew assembleDebug --no-daemon --stacktrace
         env:
           ANDROID_NDK_HOME: ${{ env.NDK_HOME }}
           ANDROID_NDK_ROOT: ${{ env.NDK_HOME }}
 
-      - name: Find APK
-        if: always()
+      - name: Find APK Location
+        id: findapk
         run: |
-          echo "=== Searching for APK files ==="
-          find . -name "*.apk" -type f 2>/dev/null || echo "No APK found"
-          echo "=== Build outputs ==="
-          ls -la app/build/outputs/apk/debug/ 2>/dev/null || echo "No outputs folder"
+          echo "=== All APK files in project ==="
+          find . -name "*.apk" -type f
+          echo ""
+          echo "=== Contents of build outputs ==="
+          find app/build -type d 2>/dev/null | head -20
+          echo ""
+          echo "=== APK files in outputs ==="
+          find app/build/outputs -name "*.apk" -type f 2>/dev/null || echo "None"
+          APK_PATH=$(find . -name "*.apk" -type f | head -1)
+          echo "Found APK at: $APK_PATH"
+          echo "apk_path=$APK_PATH" >> $GITHUB_OUTPUT
 
-      - name: Upload APK
-        if: success()
+      - name: Rename APK
+        run: |
+          APK=$(find . -name "*.apk" -type f | head -1)
+          if [ -n "$APK" ]; then
+            cp "$APK" SubwayBrutal-v1.0-debug.apk
+            ls -la SubwayBrutal-v1.0-debug.apk
+          else
+            echo "❌ No APK found to rename!"
+            exit 1
+          fi
+
+      - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: SubwayBrutal-debug-apk
-          path: app/build/outputs/apk/debug/*.apk
+          name: SubwayBrutal-APK
+          path: SubwayBrutal-v1.0-debug.apk
           retention-days: 30
           if-no-files-found: error
-
-      - name: Upload Build Log (on failure)
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: build-log
-          path: build.log
-          retention-days: 7
-          if-no-files-found: ignore
+          compression-level: 0
