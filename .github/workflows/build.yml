@@ -25,12 +25,21 @@ jobs:
 
       - name: Install NDK, CMake, Platforms
         run: |
-          echo "y" | ${ANDROID_SDK_ROOT}/cmdline-tools/latest/bin/sdkmanager "ndk;25.2.9519653" > /dev/null
-          echo "y" | ${ANDROID_SDK_ROOT}/cmdline-tools/latest/bin/sdkmanager "cmake;3.22.1" > /dev/null
-          echo "y" | ${ANDROID_SDK_ROOT}/cmdline-tools/latest/bin/sdkmanager "platforms;android-33" > /dev/null
-          echo "y" | ${ANDROID_SDK_ROOT}/cmdline-tools/latest/bin/sdkmanager "build-tools;33.0.2" > /dev/null
-          echo "ANDROID_NDK_HOME=${ANDROID_SDK_ROOT}/ndk/25.2.9519653" >> $GITHUB_ENV
-          echo "NDK_HOME=${ANDROID_SDK_ROOT}/ndk/25.2.9519653" >> $GITHUB_ENV
+          set -e
+          SDK=${ANDROID_SDK_ROOT}
+          echo "y" | $SDK/cmdline-tools/latest/bin/sdkmanager "platform-tools" > /dev/null
+          echo "y" | $SDK/cmdline-tools/latest/bin/sdkmanager "platforms;android-33" > /dev/null
+          echo "y" | $SDK/cmdline-tools/latest/bin/sdkmanager "build-tools;33.0.2" > /dev/null
+          echo "y" | $SDK/cmdline-tools/latest/bin/sdkmanager "ndk;25.2.9519653" > /dev/null
+          echo "y" | $SDK/cmdline-tools/latest/bin/sdkmanager "cmake;3.22.1" > /dev/null
+          echo "ANDROID_NDK_HOME=$SDK/ndk/25.2.9519653" >> $GITHUB_ENV
+          echo "ANDROID_NDK_ROOT=$SDK/ndk/25.2.9519653" >> $GITHUB_ENV
+          echo "NDK_HOME=$SDK/ndk/25.2.9519653" >> $GITHUB_ENV
+          echo "$SDK/cmake/3.22.1/bin" >> $GITHUB_PATH
+          echo "=== Verify NDK ==="
+          ls -la $SDK/ndk/25.2.9519653/ | head -5
+          echo "=== Verify CMake ==="
+          ls -la $SDK/cmake/3.22.1/bin/
 
       - name: Download Gradle 7.6.1
         run: |
@@ -38,6 +47,12 @@ jobs:
           unzip -q /tmp/gradle.zip -d /opt/
           echo "/opt/gradle-7.6.1/bin" >> $GITHUB_PATH
           /opt/gradle-7.6.1/bin/gradle --version
+
+      - name: Create local.properties
+        run: |
+          echo "sdk.dir=$ANDROID_SDK_ROOT" > local.properties
+          echo "ndk.dir=$ANDROID_NDK_HOME" >> local.properties
+          cat local.properties
 
       - name: Generate Gradle Wrapper
         run: |
@@ -47,9 +62,10 @@ jobs:
 
       - name: Build Debug APK
         run: |
-          ./gradlew assembleDebug --no-daemon --stacktrace
+          ./gradlew assembleDebug --no-daemon --stacktrace 2>&1 | tee build.log
         env:
           ANDROID_NDK_HOME: ${{ env.NDK_HOME }}
+          ANDROID_NDK_ROOT: ${{ env.NDK_HOME }}
 
       - name: Find APK
         if: always()
@@ -67,3 +83,12 @@ jobs:
           path: app/build/outputs/apk/debug/*.apk
           retention-days: 30
           if-no-files-found: error
+
+      - name: Upload Build Log (on failure)
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-log
+          path: build.log
+          retention-days: 7
+          if-no-files-found: ignore
