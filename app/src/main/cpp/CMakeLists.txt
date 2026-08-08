@@ -4,19 +4,24 @@ project(subwaybrutal)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+# Use pre-built Dobby via FetchContent with STABLE tag
 include(FetchContent)
 
 FetchContent_Declare(
     Dobby
     GIT_REPOSITORY https://github.com/jmpews/Dobby.git
-    GIT_TAG master
+    GIT_TAG        v1.2.2
 )
 
-set(DOBBY_BUILD_SHARED OFF CACHE BOOL "" FORCE)
-set(Plugin.Android.BionicLinkerRestriction OFF CACHE BOOL "" FORCE)
+# Dobby config
+set(DOBBY_BUILD_SHARED_LIBRARY OFF CACHE BOOL "" FORCE)
+set(DOBBY_BUILD_EXAMPLE OFF CACHE BOOL "" FORCE)
+set(DOBBY_BUILD_TEST OFF CACHE BOOL "" FORCE)
+set(DOBBY_GENERATE_SHARED OFF CACHE BOOL "" FORCE)
 
 FetchContent_MakeAvailable(Dobby)
 
+# Main native library
 add_library(
     subwaybrutal
     SHARED
@@ -29,7 +34,7 @@ add_library(
 
 target_link_libraries(
     subwaybrutal
-    dobby_static
+    dobby
     android
     log
     EGL
@@ -49,8 +54,10 @@ target_compile_options(
     -fno-exceptions
     -fno-rtti
     -Wall
+    -Wno-unused-parameter
 )
 
+# Injector binary
 add_executable(
     ffinjector
     ${CMAKE_CURRENT_SOURCE_DIR}/../../../../injector/injector.cpp
