@@ -60,37 +60,26 @@ jobs:
           ANDROID_NDK_HOME: ${{ env.NDK_HOME }}
           ANDROID_NDK_ROOT: ${{ env.NDK_HOME }}
 
-      - name: Find APK Location
-        id: findapk
+      - name: Find and Rename APK
         run: |
-          echo "=== All APK files in project ==="
+          echo "=== Searching for APK ==="
           find . -name "*.apk" -type f
-          echo ""
-          echo "=== Contents of build outputs ==="
-          find app/build -type d 2>/dev/null | head -20
-          echo ""
-          echo "=== APK files in outputs ==="
-          find app/build/outputs -name "*.apk" -type f 2>/dev/null || echo "None"
-          APK_PATH=$(find . -name "*.apk" -type f | head -1)
-          echo "Found APK at: $APK_PATH"
-          echo "apk_path=$APK_PATH" >> $GITHUB_OUTPUT
-
-      - name: Rename APK
-        run: |
           APK=$(find . -name "*.apk" -type f | head -1)
-          if [ -n "$APK" ]; then
-            cp "$APK" SubwayBrutal-v1.0-debug.apk
-            ls -la SubwayBrutal-v1.0-debug.apk
-          else
-            echo "❌ No APK found to rename!"
+          if [ -z "$APK" ]; then
+            echo "❌ NO APK FOUND!"
             exit 1
           fi
+          echo "✅ Found APK at: $APK"
+          mkdir -p /tmp/apk-output
+          cp "$APK" /tmp/apk-output/SubwayBrutal-v1.0-debug.apk
+          ls -la /tmp/apk-output/
+          echo "APK_SIZE=$(du -h /tmp/apk-output/SubwayBrutal-v1.0-debug.apk | cut -f1)"
 
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
           name: SubwayBrutal-APK
-          path: SubwayBrutal-v1.0-debug.apk
+          path: /tmp/apk-output/SubwayBrutal-v1.0-debug.apk
           retention-days: 30
           if-no-files-found: error
           compression-level: 0
