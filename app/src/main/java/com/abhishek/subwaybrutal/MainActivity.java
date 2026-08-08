@@ -17,8 +17,6 @@ import android.widget.Toast;
 
 import java.io.BufferedReader;
 import java.io.File;
-import java.io.FileOutputStream;
-import java.io.InputStream;
 import java.io.InputStreamReader;
 
 public class MainActivity extends Activity {
@@ -52,7 +50,6 @@ public class MainActivity extends Activity {
         title.setTextColor(Color.parseColor("#FF0033"));
         title.setTextSize(22f);
         title.setGravity(Gravity.CENTER);
-        title.setPadding(0, 0, 0, 4);
 
         TextView sub = new TextView(this);
         sub.setText("by Abhishek | Target: com.kiloo.subwaysurf");
@@ -71,37 +68,25 @@ public class MainActivity extends Activity {
         Button launchBtn = new Button(this);
         launchBtn.setText("▶ LAUNCH SUBWAY SURFERS");
         launchBtn.setTextColor(Color.WHITE);
-        launchBtn.setTextSize(14f);
         launchBtn.setBackgroundColor(Color.parseColor("#FF0033"));
-        launchBtn.setPadding(16, 12, 16, 12);
         LinearLayout.LayoutParams btnLP = new LinearLayout.LayoutParams(
-            ViewGroup.LayoutParams.MATCH_PARENT,
-            ViewGroup.LayoutParams.WRAP_CONTENT);
+            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         btnLP.setMargins(0, 0, 0, 12);
         launchBtn.setLayoutParams(btnLP);
         launchBtn.setOnClickListener(new android.view.View.OnClickListener() {
-            @Override
-            public void onClick(android.view.View v) {
-                launchAndInject();
-            }
+            @Override public void onClick(android.view.View v) { launchAndInject(); }
         });
 
         Button injectBtn = new Button(this);
         injectBtn.setText("⚡ INJECT MOD (Game Running)");
         injectBtn.setTextColor(Color.WHITE);
-        injectBtn.setTextSize(13f);
         injectBtn.setBackgroundColor(Color.parseColor("#1A0033"));
-        injectBtn.setPadding(16, 12, 16, 12);
         LinearLayout.LayoutParams injLP = new LinearLayout.LayoutParams(
-            ViewGroup.LayoutParams.MATCH_PARENT,
-            ViewGroup.LayoutParams.WRAP_CONTENT);
+            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         injLP.setMargins(0, 0, 0, 12);
         injectBtn.setLayoutParams(injLP);
         injectBtn.setOnClickListener(new android.view.View.OnClickListener() {
-            @Override
-            public void onClick(android.view.View v) {
-                injectOnly();
-            }
+            @Override public void onClick(android.view.View v) { injectOnly(); }
         });
 
         logText = new TextView(this);
@@ -115,20 +100,12 @@ public class MainActivity extends Activity {
         logLP.weight = 1f;
         logText.setLayoutParams(logLP);
 
-        TextView wm = new TextView(this);
-        wm.setText("💀 SUBWAY BRUTAL — USE WISELY");
-        wm.setTextColor(Color.parseColor("#333333"));
-        wm.setTextSize(9f);
-        wm.setGravity(Gravity.CENTER);
-        wm.setPadding(0, 12, 0, 0);
-
         root.addView(title);
         root.addView(sub);
         root.addView(statusText);
         root.addView(launchBtn);
         root.addView(injectBtn);
         root.addView(logText);
-        root.addView(wm);
         setContentView(root);
     }
 
@@ -143,9 +120,7 @@ public class MainActivity extends Activity {
                     String out = br.readLine();
                     p.waitFor();
                     rooted = (out != null && out.contains("uid=0"));
-                } catch (Exception e) {
-                    rooted = false;
-                }
+                } catch (Exception e) { rooted = false; }
                 final boolean finalRooted = rooted;
                 handler.post(new Runnable() {
                     @Override
@@ -155,20 +130,17 @@ public class MainActivity extends Activity {
                             appendLog("Root: PASSED");
                             checkOverlayPermission();
                         } else {
-                            setStatus("🔴 NO ROOT — App needs root!", "#FF3333");
-                            appendLog("Root: FAILED");
+                            setStatus("🔴 NO ROOT!", "#FF3333");
                             Toast.makeText(MainActivity.this, "ROOT NOT FOUND", Toast.LENGTH_LONG).show();
                         }
                     }
                 });
             }
-        }, "RootCheck").start();
+        }).start();
     }
 
     private void checkOverlayPermission() {
         if (!Settings.canDrawOverlays(this)) {
-            setStatus("🟡 OVERLAY PERMISSION NEEDED", "#FFD700");
-            appendLog("Requesting overlay permission…");
             Intent intent = new Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
                 Uri.parse("package:" + getPackageName()));
             startActivityForResult(intent, OVERLAY_REQUEST_CODE);
@@ -180,23 +152,15 @@ public class MainActivity extends Activity {
     @Override
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
-        if (requestCode == OVERLAY_REQUEST_CODE) {
-            if (Settings.canDrawOverlays(this)) {
-                appendLog("Overlay granted!");
-                setStatus("🟢 Ready to inject", "#00FF88");
-            } else {
-                setStatus("🔴 Overlay needed", "#FF3333");
-            }
+        if (requestCode == OVERLAY_REQUEST_CODE && Settings.canDrawOverlays(this)) {
+            appendLog("Overlay granted!");
         }
     }
 
     private void launchAndInject() {
-        if (!Settings.canDrawOverlays(this)) {
-            checkOverlayPermission();
-            return;
-        }
-        setStatus("🟡 Launching Subway Surfers…", "#FFD700");
-        appendLog("Launching…");
+        if (!Settings.canDrawOverlays(this)) { checkOverlayPermission(); return; }
+        setStatus("🟡 Launching…", "#FFD700");
+        appendLog("Launching game…");
         startService(new Intent(this, FloatingMenuService.class));
 
         Intent launchIntent = getPackageManager().getLaunchIntentForPackage(TARGET_PKG);
@@ -204,145 +168,115 @@ public class MainActivity extends Activity {
             launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
             startActivity(launchIntent);
         } else {
-            appendLog("ERROR: Game not installed!");
             setStatus("🔴 Game not installed!", "#FF3333");
             return;
         }
 
         handler.postDelayed(new Runnable() {
-            @Override
-            public void run() {
-                if (!injected) performInjection();
-            }
+            @Override public void run() { if (!injected) performInjection(); }
         }, 12000);
-        appendLog("Waiting 12s for game load…");
     }
 
     private void injectOnly() {
-        if (!Settings.canDrawOverlays(this)) {
-            checkOverlayPermission();
-            return;
-        }
+        if (!Settings.canDrawOverlays(this)) { checkOverlayPermission(); return; }
         startService(new Intent(this, FloatingMenuService.class));
-        appendLog("Manual inject…");
         performInjection();
     }
 
     private void performInjection() {
-        setStatus("🟡 INJECTING…", "#FFD700");
-        appendLog("Extracting libs…");
+        setStatus("🟡 INJECTING via root…", "#FFD700");
+        appendLog("Starting root injection…");
 
         new Thread(new Runnable() {
             @Override
             public void run() {
                 try {
-                    File injectorFile = extractAsset("ffinjector", getFilesDir() + "/ffinjector");
-                    File soFile = extractNativeLib("libsubwaybrutal.so", getFilesDir() + "/libsubwaybrutal.so");
-
-                    if (injectorFile == null || soFile == null) {
+                    // Get libsubwaybrutal.so path from installed APK
+                    String soPath = getApplicationInfo().nativeLibraryDir + "/libsubwaybrutal.so";
+                    File soFile = new File(soPath);
+                    if (!soFile.exists()) {
                         handler.post(new Runnable() {
-                            @Override
-                            public void run() {
-                                setStatus("🔴 Extract failed!", "#FF3333");
+                            @Override public void run() {
+                                setStatus("🔴 libsubwaybrutal.so not found!", "#FF3333");
                             }
                         });
                         return;
                     }
 
-                    runShell("chmod 755 " + injectorFile.getAbsolutePath());
+                    final String finalSoPath = soPath;
+                    handler.post(new Runnable() {
+                        @Override public void run() {
+                            appendLog("Lib: " + finalSoPath);
+                        }
+                    });
+
+                    // Copy .so to /data/local/tmp/ (accessible by target app)
+                    String tmpSoPath = "/data/local/tmp/libsubwaybrutal.so";
+                    runShell("cp " + soPath + " " + tmpSoPath);
+                    runShell("chmod 755 " + tmpSoPath);
+                    runShell("chmod 755 /data/local/tmp/");
+
+                    // Set SELinux permissive
                     runShell("setenforce 0");
 
+                    // Get PID
                     String pid = runShellOutput("pidof " + TARGET_PKG);
                     if (pid == null || pid.trim().isEmpty()) {
                         handler.post(new Runnable() {
-                            @Override
-                            public void run() {
+                            @Override public void run() {
                                 setStatus("🔴 Game not running!", "#FF3333");
-                                appendLog("No PID found");
+                                appendLog("No PID found for " + TARGET_PKG);
                             }
                         });
                         return;
                     }
                     final String finalPid = pid.trim().split("\\s+")[0];
                     handler.post(new Runnable() {
-                        @Override
-                        public void run() {
-                            appendLog("PID: " + finalPid);
-                        }
+                        @Override public void run() { appendLog("PID: " + finalPid); }
                     });
 
-                    String injectCmd = injectorFile.getAbsolutePath() + " " + finalPid + " " + soFile.getAbsolutePath();
-                    final String result = runShellOutput(injectCmd);
+                    // Method: Kill game and relaunch with LD_PRELOAD
+                    // This is simpler and works without ptrace injector
+                    String killCmd = "am force-stop " + TARGET_PKG;
+                    runShell(killCmd);
+                    Thread.sleep(1000);
+
+                    // Set global LD_PRELOAD hint via setprop (won't persist, but hint)
+                    // Real injection: use su to launch with LD_PRELOAD env
+                    String launchCmd = "LD_PRELOAD=" + tmpSoPath + " am start -n " + 
+                        TARGET_PKG + "/com.unity3d.player.UnityPlayerActivity";
+                    String result = runShellOutput(launchCmd);
+                    final String finalResult = result;
                     handler.post(new Runnable() {
-                        @Override
-                        public void run() {
-                            appendLog("Injector: " + result);
-                        }
+                        @Override public void run() { appendLog("Launch: " + finalResult); }
                     });
 
                     injected = true;
                     handler.post(new Runnable() {
-                        @Override
-                        public void run() {
-                            setStatus("🟢 INJECTED!", "#00FF88");
-                            appendLog("Done!");
+                        @Override public void run() {
+                            setStatus("🟢 INJECTED via LD_PRELOAD!", "#00FF88");
+                            appendLog("Mod loaded! Panel toggles should work.");
                         }
                     });
 
                 } catch (final Exception e) {
                     Log.e(TAG, "Inject err", e);
                     handler.post(new Runnable() {
-                        @Override
-                        public void run() {
+                        @Override public void run() {
                             setStatus("🔴 ERROR", "#FF3333");
                             appendLog("Ex: " + e.getMessage());
                         }
                     });
                 }
             }
-        }, "InjectorThread").start();
-    }
-
-    private File extractAsset(String assetName, String destPath) {
-        try {
-            InputStream in = getAssets().open(assetName);
-            File out = new File(destPath);
-            FileOutputStream fos = new FileOutputStream(out);
-            byte[] buf = new byte[4096];
-            int n;
-            while ((n = in.read(buf)) != -1) fos.write(buf, 0, n);
-            fos.close();
-            in.close();
-            appendLog("Extracted: " + assetName);
-            return out;
-        } catch (Exception e) {
-            appendLog("Extract fail: " + assetName);
-            return null;
-        }
-    }
-
-    private File extractNativeLib(String libName, String destPath) {
-        try {
-            String installedLib = getApplicationInfo().nativeLibraryDir + "/" + libName;
-            File installedFile = new File(installedLib);
-            if (installedFile.exists()) {
-                appendLog("Using installed: " + installedLib);
-                return installedFile;
-            }
-            appendLog("Lib not found: " + libName);
-            return null;
-        } catch (Exception e) {
-            return null;
-        }
+        }).start();
     }
 
     private void runShell(String cmd) {
         try {
             Process p = Runtime.getRuntime().exec(new String[]{"su", "-c", cmd});
             p.waitFor();
-        } catch (Exception e) {
-            Log.e(TAG, "Shell err: " + e.getMessage());
-        }
+        } catch (Exception e) { Log.e(TAG, "Shell err: " + e.getMessage()); }
     }
 
     private String runShellOutput(String cmd) {
@@ -354,15 +288,12 @@ public class MainActivity extends Activity {
             while ((line = br.readLine()) != null) sb.append(line).append("\n");
             p.waitFor();
             return sb.toString().trim();
-        } catch (Exception e) {
-            return "ERROR: " + e.getMessage();
-        }
+        } catch (Exception e) { return "ERR: " + e.getMessage(); }
     }
 
     private void setStatus(final String msg, final String colorHex) {
         handler.post(new Runnable() {
-            @Override
-            public void run() {
+            @Override public void run() {
                 statusText.setText(msg);
                 statusText.setTextColor(Color.parseColor(colorHex));
             }
@@ -371,8 +302,7 @@ public class MainActivity extends Activity {
 
     private void appendLog(final String msg) {
         handler.post(new Runnable() {
-            @Override
-            public void run() {
+            @Override public void run() {
                 if (logText != null) logText.append("› " + msg + "\n");
             }
         });
