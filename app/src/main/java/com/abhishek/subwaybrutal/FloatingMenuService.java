@@ -19,12 +19,15 @@ import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
 
+import java.io.BufferedReader;
+import java.io.InputStreamReader;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
 public class FloatingMenuService extends Service {
 
     private static final String TAG = "SubwayBrutal_Float";
+    private static final String TARGET_PKG = "com.kiloo.subwaysurf";
 
     private WindowManager windowManager;
     private View floatingIcon;
@@ -35,6 +38,7 @@ public class FloatingMenuService extends Service {
     private NativeBridge bridge;
     private Handler mainHandler;
     private TextView statusText;
+    private boolean autoInjectDone = false;
 
     private final Map<String, Boolean> toggleStates = new LinkedHashMap<String, Boolean>();
 
@@ -54,12 +58,8 @@ public class FloatingMenuService extends Service {
 
     private static final int[] SECTION_BEFORE_INDEX = {0, 2, 5, 8, 9, 10};
     private static final String[] SECTION_NAMES = {
-        "💰 COINS & SCORE",
-        "🛡️ SURVIVAL",
-        "🏃 MOVEMENT",
-        "✈️ JETPACK",
-        "🔓 UNLOCK",
-        "☢️ NUCLEAR"
+        "💰 COINS & SCORE", "🛡️ SURVIVAL", "🏃 MOVEMENT",
+        "✈️ JETPACK", "🔓 UNLOCK", "☢️ NUCLEAR"
     };
 
     @Override
@@ -68,19 +68,16 @@ public class FloatingMenuService extends Service {
         windowManager = (WindowManager) getSystemService(WINDOW_SERVICE);
         mainHandler = new Handler(Looper.getMainLooper());
 
-        for (String[] feat : FEATURES) {
-            toggleStates.put(feat[1], false);
-        }
+        for (String[] feat : FEATURES) toggleStates.put(feat[1], false);
 
         bridge = new NativeBridge();
         bridge.setCallback(new NativeBridge.ConnectionCallback() {
             @Override
             public void onConnected() {
                 mainHandler.post(new Runnable() {
-                    @Override
-                    public void run() {
+                    @Override public void run() {
                         if (statusText != null) {
-                            statusText.setText("🟢 ATTACHED — Mod Active");
+                            statusText.setText("🟢 ATTACHED — Mod Active!");
                             statusText.setTextColor(Color.parseColor("#00FF88"));
                         }
                     }
@@ -89,37 +86,133 @@ public class FloatingMenuService extends Service {
             @Override
             public void onDisconnected() {
                 mainHandler.post(new Runnable() {
-                    @Override
-                    public void run() {
+                    @Override public void run() {
                         if (statusText != null) {
-                            statusText.setText("🔴 DISCONNECTED");
-                            statusText.setTextColor(Color.parseColor("#FF3333"));
+                            statusText.setText("🟡 Reconnecting…");
+                            statusText.setTextColor(Color.parseColor("#FFD700"));
                         }
                     }
                 });
+                mainHandler.postDelayed(new Runnable() {
+                    @Override public void run() { bridge.connect(); }
+                }, 3000);
             }
             @Override
             public void onError(String msg) {
                 mainHandler.post(new Runnable() {
-                    @Override
-                    public void run() {
+                    @Override public void run() {
                         if (statusText != null) {
-                            statusText.setText("⚪ WAITING FOR GAME…");
-                            statusText.setTextColor(Color.parseColor("#888888"));
+                            statusText.setText("⚪ Auto-injecting…");
+                            statusText.setTextColor(Color.parseColor("#00FFFF"));
                         }
                     }
                 });
+                // Trigger auto-injection if not done
+                if (!autoInjectDone) {
+                    autoInjectDone = true;
+                    performAutoInject();
+                }
             }
         });
 
         createFloatingIcon();
+        // Start auto-inject after 3 sec (give panel time to setup)
+        mainHandler.postDelayed(new Runnable() {
+            @Override public void run() { performAutoInject(); }
+        }, 3000);
         bridge.connect();
     }
 
+    private void performAutoInject() {
+        appendStatus("Detecting game…");
+        new Thread(new Runnable() {
+            @Override
+            public void run() {
+                try {
+                    // Wait for game to be running
+                    int retries = 0;
+                    String gamePid = "";
+                    while (retries < 30) {
+                        gamePid = runShellOutput("pidof " + TARGET_PKG);
+                        if (gamePid != null && !gamePid.trim().isEmpty()) break;
+                        Thread.sleep(1000);
+                        retries++;
+                    }
+
+                    if (gamePid == null || gamePid.trim().isEmpty()) {
+                        appendStatus("Game not running yet");
+                        return;
+                    }
+
+                    appendStatus("Game PID: " + gamePid.trim());
+
+                    // Get .so path
+                    String soPath = getApplicationInfo().nativeLibraryDir + "/libsubwaybrutal.so";
+                    appendStatus("Copying .so…");
+
+                    // Copy to /data/local/tmp
+                    runShell("cp " + soPath + " /data/local/tmp/libsubwaybrutal.so");
+                    runShell("chmod 777 /data/local/tmp/libsubwaybrutal.so");
+                    runShell("setenforce 0");
+
+                    // Kill and relaunch with LD_PRELOAD
+                    appendStatus("Restarting game with mod…");
+                    runShell("am force-stop " + TARGET_PKG);
+                    Thread.sleep(2000);
+
+                    // Launch with LD_PRELOAD via setprop trick
+                    String launchCmd = "LD_PRELOAD=/data/local/tmp/libsubwaybrutal.so " +
+                        "am start -n " + TARGET_PKG + "/com.unity3d.player.UnityPlayerActivity";
+                    runShell(launchCmd);
+
+                    appendStatus("Mod injected! Reconnecting…");
+                    Thread.sleep(5000);
+
+                    // Try to reconnect socket
+                    if (bridge != null) bridge.connect();
+
+                } catch (Exception e) {
+                    Log.e(TAG, "Auto-inject err", e);
+                    appendStatus("Inject error: " + e.getMessage());
+                }
+            }
+        }, "AutoInject").start();
+    }
+
+    private void appendStatus(final String msg) {
+        Log.d(TAG, "Status: " + msg);
+        mainHandler.post(new Runnable() {
+            @Override public void run() {
+                if (statusText != null) {
+                    statusText.setText("⚡ " + msg);
+                    statusText.setTextColor(Color.parseColor("#00FFFF"));
+                }
+            }
+        });
+    }
+
+    private void runShell(String cmd) {
+        try {
+            Process p = Runtime.getRuntime().exec(new String[]{"su", "-c", cmd});
+            p.waitFor();
+        } catch (Exception e) { Log.e(TAG, "Shell err: " + e.getMessage()); }
+    }
+
+    private String runShellOutput(String cmd) {
+        try {
+            Process p = Runtime.getRuntime().exec(new String[]{"su", "-c", cmd});
+            BufferedReader br = new BufferedReader(new InputStreamReader(p.getInputStream()));
+            StringBuilder sb = new StringBuilder();
+            String line;
+            while ((line = br.readLine()) != null) sb.append(line).append("\n");
+            p.waitFor();
+            return sb.toString().trim();
+        } catch (Exception e) { return ""; }
+    }
+
     private int getOverlayType() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
             return WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY;
-        }
         return WindowManager.LayoutParams.TYPE_PHONE;
     }
 
@@ -135,13 +228,10 @@ public class FloatingMenuService extends Service {
         iconLayout.addView(iconText);
 
         iconParams = new WindowManager.LayoutParams(
-            dpToPx(52),
-            dpToPx(52),
-            getOverlayType(),
+            dpToPx(52), dpToPx(52), getOverlayType(),
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
                 | WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
-            PixelFormat.TRANSLUCENT
-        );
+            PixelFormat.TRANSLUCENT);
         iconParams.gravity = Gravity.TOP | Gravity.LEFT;
         iconParams.x = 20;
         iconParams.y = 200;
@@ -185,36 +275,30 @@ public class FloatingMenuService extends Service {
     }
 
     private void togglePanel() {
-        if (panelView != null && panelView.getVisibility() == View.VISIBLE) {
+        if (panelView != null && panelView.getVisibility() == View.VISIBLE)
             panelView.setVisibility(View.GONE);
-        } else if (panelView != null) {
+        else if (panelView != null)
             panelView.setVisibility(View.VISIBLE);
-        } else {
+        else
             createPanel();
-        }
     }
 
     private void createPanel() {
         DisplayMetrics dm = getResources().getDisplayMetrics();
-        int screenW = dm.widthPixels;
-        int screenH = dm.heightPixels;
-        int panelW = (int)(screenW * 0.68f);
-        int panelH = (int)(screenH * 0.82f);
+        int panelW = (int)(dm.widthPixels * 0.68f);
+        int panelH = (int)(dm.heightPixels * 0.82f);
 
         panelParams = new WindowManager.LayoutParams(
-            panelW, panelH,
-            getOverlayType(),
+            panelW, panelH, getOverlayType(),
             WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL
                 | WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH,
-            PixelFormat.TRANSLUCENT
-        );
+            PixelFormat.TRANSLUCENT);
         panelParams.gravity = Gravity.CENTER;
 
         LinearLayout rootLayout = new LinearLayout(this);
         rootLayout.setOrientation(LinearLayout.VERTICAL);
         rootLayout.setBackgroundColor(Color.parseColor("#E5080810"));
 
-        // HEADER
         LinearLayout header = new LinearLayout(this);
         header.setOrientation(LinearLayout.HORIZONTAL);
         header.setBackgroundColor(Color.parseColor("#120012"));
@@ -225,7 +309,8 @@ public class FloatingMenuService extends Service {
         titleText.setText("🔥 SUBWAY BRUTAL v1.0");
         titleText.setTextColor(Color.parseColor("#FF0033"));
         titleText.setTextSize(13f);
-        LinearLayout.LayoutParams titleLP = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+        LinearLayout.LayoutParams titleLP = new LinearLayout.LayoutParams(
+            0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
         titleText.setLayoutParams(titleLP);
 
         TextView closeBtn = new TextView(this);
@@ -234,10 +319,7 @@ public class FloatingMenuService extends Service {
         closeBtn.setTextSize(16f);
         closeBtn.setPadding(dpToPx(8), dpToPx(4), dpToPx(8), dpToPx(4));
         closeBtn.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                panelView.setVisibility(View.GONE);
-            }
+            @Override public void onClick(View v) { panelView.setVisibility(View.GONE); }
         });
 
         header.addView(titleText);
@@ -247,7 +329,6 @@ public class FloatingMenuService extends Service {
         final int[] panelInitY = {0};
         final int[] touchInitX = {0};
         final int[] touchInitY = {0};
-
         header.setOnTouchListener(new View.OnTouchListener() {
             @Override
             public boolean onTouch(View v, MotionEvent event) {
@@ -268,15 +349,13 @@ public class FloatingMenuService extends Service {
             }
         });
 
-        // STATUS
         statusText = new TextView(this);
-        statusText.setText("⚪ WAITING FOR GAME…");
-        statusText.setTextColor(Color.parseColor("#888888"));
+        statusText.setText("⚡ Auto-injecting on start…");
+        statusText.setTextColor(Color.parseColor("#00FFFF"));
         statusText.setTextSize(10f);
         statusText.setBackgroundColor(Color.parseColor("#0D0D1A"));
         statusText.setPadding(dpToPx(10), dpToPx(4), dpToPx(10), dpToPx(4));
 
-        // SCROLL VIEW - FIXED
         ScrollView scrollView = new ScrollView(this);
         scrollView.setFillViewport(false);
         scrollView.setVerticalScrollBarEnabled(true);
@@ -290,8 +369,7 @@ public class FloatingMenuService extends Service {
         scrollContent.setOrientation(LinearLayout.VERTICAL);
         scrollContent.setPadding(dpToPx(6), dpToPx(6), dpToPx(6), dpToPx(30));
         scrollContent.setLayoutParams(new LinearLayout.LayoutParams(
-            ViewGroup.LayoutParams.MATCH_PARENT,
-            ViewGroup.LayoutParams.WRAP_CONTENT));
+            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
         int sectionIdx = 0;
         for (int i = 0; i < FEATURES.length; i++) {
@@ -303,7 +381,6 @@ public class FloatingMenuService extends Service {
         }
 
         scrollView.addView(scrollContent);
-
         rootLayout.addView(header);
         rootLayout.addView(statusText);
         rootLayout.addView(scrollView);
@@ -318,11 +395,9 @@ public class FloatingMenuService extends Service {
         row.setBackgroundColor(Color.parseColor("#1A001A"));
         row.setPadding(dpToPx(10), dpToPx(6), dpToPx(10), dpToPx(6));
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
-            ViewGroup.LayoutParams.MATCH_PARENT,
-            ViewGroup.LayoutParams.WRAP_CONTENT);
+            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         lp.setMargins(0, dpToPx(6), 0, dpToPx(2));
         row.setLayoutParams(lp);
-
         TextView tv = new TextView(this);
         tv.setText(title);
         tv.setTextColor(Color.parseColor("#FFD700"));
@@ -338,8 +413,7 @@ public class FloatingMenuService extends Service {
         row.setBackgroundColor(Color.parseColor("#0F0F1F"));
         row.setPadding(dpToPx(10), dpToPx(9), dpToPx(10), dpToPx(9));
         LinearLayout.LayoutParams rowLP = new LinearLayout.LayoutParams(
-            ViewGroup.LayoutParams.MATCH_PARENT,
-            ViewGroup.LayoutParams.WRAP_CONTENT);
+            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         rowLP.setMargins(0, dpToPx(1), 0, dpToPx(1));
         row.setLayoutParams(rowLP);
 
@@ -347,13 +421,14 @@ public class FloatingMenuService extends Service {
         labelView.setText(label);
         labelView.setTextColor(Color.WHITE);
         labelView.setTextSize(12f);
-        LinearLayout.LayoutParams labelLP = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+        LinearLayout.LayoutParams labelLP = new LinearLayout.LayoutParams(
+            0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
         labelView.setLayoutParams(labelLP);
 
         final TextView toggleView = new TextView(this);
-        boolean currentState = Boolean.TRUE.equals(toggleStates.get(command));
-        toggleView.setText(currentState ? "ON" : "OFF");
-        toggleView.setTextColor(currentState ? Color.parseColor("#00FF88") : Color.parseColor("#444444"));
+        boolean cs = Boolean.TRUE.equals(toggleStates.get(command));
+        toggleView.setText(cs ? "ON" : "OFF");
+        toggleView.setTextColor(cs ? Color.parseColor("#00FF88") : Color.parseColor("#444444"));
         toggleView.setTextSize(11f);
         toggleView.setPadding(dpToPx(8), dpToPx(3), dpToPx(8), dpToPx(3));
 
@@ -365,13 +440,8 @@ public class FloatingMenuService extends Service {
                 toggleView.setText(newState ? "ON" : "OFF");
                 toggleView.setTextColor(newState ? Color.parseColor("#00FF88") : Color.parseColor("#444444"));
                 row.setBackgroundColor(newState ? Color.parseColor("#0A1F0A") : Color.parseColor("#0F0F1F"));
-
-                if (command.equals(NativeBridge.CMD_ACTIVATE_ALL)) {
-                    activateAll(newState);
-                } else {
-                    bridge.sendToggle(command, newState);
-                }
-                Log.d(TAG, "Toggle: " + command + " -> " + newState);
+                if (command.equals(NativeBridge.CMD_ACTIVATE_ALL)) activateAll(newState);
+                else bridge.sendToggle(command, newState);
             }
         });
 
@@ -393,32 +463,24 @@ public class FloatingMenuService extends Service {
             panelView = null;
         }
         mainHandler.postDelayed(new Runnable() {
-            @Override
-            public void run() {
-                createPanel();
-            }
+            @Override public void run() { createPanel(); }
         }, 200);
     }
 
     @Override
-    public IBinder onBind(Intent intent) {
-        return null;
-    }
+    public IBinder onBind(Intent intent) { return null; }
 
     @Override
     public void onDestroy() {
         super.onDestroy();
-        if (floatingIcon != null) {
+        if (floatingIcon != null)
             try { windowManager.removeView(floatingIcon); } catch (Exception e) {}
-        }
-        if (panelView != null) {
+        if (panelView != null)
             try { windowManager.removeView(panelView); } catch (Exception e) {}
-        }
         if (bridge != null) bridge.disconnect();
     }
 
     private int dpToPx(int dp) {
-        float density = getResources().getDisplayMetrics().density;
-        return Math.round(dp * density);
+        return Math.round(dp * getResources().getDisplayMetrics().density);
     }
 }
